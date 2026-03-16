@@ -1,0 +1,376 @@
+﻿
+============================================================
+PROCESSING: block.m4a
+============================================================
+
+============================================================
+  Stuttering Detection ù Single File Prediction
+============================================================
+
+  Audio file:  block.m4a
+  Full path:   D:\semi supervised\real input\block.m4a
+
+  [1/4] Loading audio...
+        Duration: 34.60s | Sample rate: 16000 Hz
+  [2/4] Removing silence...
+        Speech duration after VAD: 33.39s
+  [3/5] Segmenting audio...
+        Generated 22 overlapping segments (3s each)
+  [4/5] Extracting features per segment...
+
+  Loading models...
+  Models loaded successfully!
+        Feature matrix shape: (22, 53)
+  [5/5] Predicting segment classes with SVM...
+
+============================================================
+  PREDICTION RESULTS
+============================================================
+
+  Audio file:      block.m4a
+  Duration:        34.60s
+  Speech duration: 33.39s
+  Total Segments:  22
+
+  --------------------------------------------------
+  ! OVERALL VERDICT: Stuttering Detected - Block
+  --------------------------------------------------
+
+  Segment Breakdown:
+    Fluent Speech           14 segs (63.6%)  #####################------------
+    Block                    8 segs (36.4%)  ############--------------------- <
+
+  Average Class Probabilities (across segments):
+    Fluent Speech           55.3%  ##################---------------
+    Block                   40.4%  #############--------------------
+    Word Repetition          3.9%  #--------------------------------
+    Sound Repetition         0.2%  ---------------------------------
+    Interjection             0.1%  ---------------------------------
+    Prolongation             0.0%  ---------------------------------
+  --------------------------------------------------
+
+  Completed in 41.0s
+
+
+============================================================
+PROCESSING: fluent1.mp3
+============================================================
+
+============================================================
+  Stuttering Detection ù Single File Prediction
+============================================================
+
+  Audio file:  fluent1.mp3
+  Full path:   D:\semi supervised\real input\fluent1.mp3
+
+  [1/4] Loading audio...
+        Duration: 30.12s | Sample rate: 16000 Hz
+  [2/4] Removing silence...
+        Speech duration after VAD: 28.20s
+  [3/5] Segmenting audio...
+        Generated 18 overlapping segments (3s each)
+  [4/5] Extracting features per segment...
+
+  Loading models...
+  Models loaded successfully!
+        Feature matrix shape: (18, 53)
+  [5/5] Predicting segment classes with SVM...
+
+============================================================
+  PREDICTION RESULTS
+============================================================
+
+  Audio file:      fluent1.mp3
+  Duration:        30.12s
+  Speech duration: 28.20s
+  Total Segments:  18
+
+  --------------------------------------------------
+  [OK] OVERALL VERDICT: Fluent Speech (No stutters detected)
+  --------------------------------------------------
+
+  Segment Breakdown:
+    Fluent Speech           17 segs (94.4%)  ###############################-- <
+    Word Repetition          1 segs ( 5.6%)  #--------------------------------
+
+  Average Class Probabilities (across segments):
+    Fluent Speech           91.6%  ##############################---
+    Word Repetition          6.6%  ##-------------------------------
+    Block                    1.4%  ---------------------------------
+    Sound Repetition         0.3%  ---------------------------------
+    Interjection             0.1%  ---------------------------------
+    Prolongation             0.0%  ---------------------------------
+  --------------------------------------------------
+
+  Completed in 34.4s
+
+
+============================================================
+PROCESSING: prolongation.mp3
+============================================================
+
+============================================================
+  Stuttering Detection ù Single File Prediction
+============================================================
+
+  Audio file:  prolongation.mp3
+  Full path:   D:\semi supervised\real input\prolongation.mp3
+
+  [1/4] Loading audio...
+        Duration: 24.71s | Sample rate: 16000 Hz
+  [2/4] Removing silence...
+        Speech duration after VAD: 13.09s
+  [3/5] Segmenting audio...
+        Generated 8 overlapping segments (3s each)
+  [4/5] Extracting features per segment...
+
+  Loading models...
+  Models loaded successfully!
+        Feature matrix shape: (8, 53)
+  [5/5] Predicting segment classes with SVM...
+
+============================================================
+  PREDICTION RESULTS
+============================================================
+
+  Audio file:      prolongation.mp3
+  Duration:        24.71s
+  Speech duration: 13.09s
+  Total Segments:  8
+
+  --------------------------------------------------
+  ! OVERALL VERDICT: Stuttering Detected - Prolongation
+  --------------------------------------------------
+
+  Segment Breakdown:
+    Prolongation             5 segs (62.5%)  ####################------------- <
+    Sound Repetition         3 segs (37.5%)  ############---------------------
+
+  Average Class Probabilities (across segments):
+    Prolongation            61.3%  ####################-------------
+    Sound Repetition        36.9%  ############---------------------
+    Word Repetition          1.6%  ---------------------------------
+    Fluent Speech            0.1%  ---------------------------------
+    Block                    0.0%  ---------------------------------
+    Interjection             0.0%  ---------------------------------
+  --------------------------------------------------
+
+  Completed in 16.4s
+
+
+============================================================
+PROCESSING: sound and word repetition.mp3
+============================================================
+
+============================================================
+  Stuttering Detection ù Single File Prediction
+============================================================
+
+  Audio file:  sound and word repetition.mp3
+  Full path:   D:\semi supervised\real input\sound and word repetition.mp3
+
+  [1/4] Loading audio...
+        Duration: 20.72s | Sample rate: 16000 Hz
+  [2/4] Removing silence...
+        Speech duration after VAD: 12.61s
+  [3/5] Segmenting audio...
+        Generated 8 overlapping segments (3s each)
+  [4/5] Extracting features per segment...
+
+  Loading models...
+  Models loaded successfully!
+        Feature matrix shape: (8, 53)
+  [5/5] Predicting segment classes with SVM...
+
+============================================================
+  PREDICTION RESULTS
+============================================================
+
+  Audio file:      sound and word repetition.mp3
+  Duration:        20.72s
+  Speech duration: 12.61s
+  Total Segments:  8
+
+  --------------------------------------------------
+  ! OVERALL VERDICT: Stuttering Detected - Sound Repetition
+  --------------------------------------------------
+
+  Segment Breakdown:
+    Sound Repetition         5 segs (62.5%)  ####################------------- <
+    Word Repetition          3 segs (37.5%)  ############---------------------
+
+  Average Class Probabilities (across segments):
+    Sound Repetition        61.0%  ####################-------------
+    Word Repetition         37.5%  ############---------------------
+    Prolongation             0.8%  ---------------------------------
+    Fluent Speech            0.4%  ---------------------------------
+    Block                    0.2%  ---------------------------------
+    Interjection             0.0%  ---------------------------------
+  --------------------------------------------------
+
+  Completed in 14.7s
+
+
+============================================================
+PROCESSING: stutter audio 2.mp3
+============================================================
+
+============================================================
+  Stuttering Detection ù Single File Prediction
+============================================================
+
+  Audio file:  stutter audio 2.mp3
+  Full path:   D:\semi supervised\real input\stutter audio 2.mp3
+
+  [1/4] Loading audio...
+        Duration: 38.05s | Sample rate: 16000 Hz
+  [2/4] Removing silence...
+        Speech duration after VAD: 26.28s
+  [3/5] Segmenting audio...
+        Generated 17 overlapping segments (3s each)
+  [4/5] Extracting features per segment...
+
+  Loading models...
+  Models loaded successfully!
+        Feature matrix shape: (17, 53)
+  [5/5] Predicting segment classes with SVM...
+
+============================================================
+  PREDICTION RESULTS
+============================================================
+
+  Audio file:      stutter audio 2.mp3
+  Duration:        38.05s
+  Speech duration: 26.28s
+  Total Segments:  17
+
+  --------------------------------------------------
+  ! OVERALL VERDICT: Stuttering Detected - Sound Repetition
+  --------------------------------------------------
+
+  Segment Breakdown:
+    Sound Repetition         6 segs (35.3%)  ###########---------------------- <
+    Interjection             4 segs (23.5%)  #######--------------------------
+    Prolongation             3 segs (17.6%)  #####----------------------------
+    Word Repetition          3 segs (17.6%)  #####----------------------------
+    Block                    1 segs ( 5.9%)  #--------------------------------
+
+  Average Class Probabilities (across segments):
+    Word Repetition         29.3%  #########------------------------
+    Sound Repetition        25.5%  ########-------------------------
+    Interjection            23.5%  #######--------------------------
+    Prolongation            11.0%  ###------------------------------
+    Block                   10.3%  ###------------------------------
+    Fluent Speech            0.4%  ---------------------------------
+  --------------------------------------------------
+
+  Completed in 30.5s
+
+
+============================================================
+PROCESSING: stutter audio 3.mp3
+============================================================
+
+============================================================
+  Stuttering Detection ù Single File Prediction
+============================================================
+
+  Audio file:  stutter audio 3.mp3
+  Full path:   D:\semi supervised\real input\stutter audio 3.mp3
+
+  [1/4] Loading audio...
+        Duration: 47.84s | Sample rate: 16000 Hz
+  [2/4] Removing silence...
+        Speech duration after VAD: 29.09s
+  [3/5] Segmenting audio...
+        Generated 19 overlapping segments (3s each)
+  [4/5] Extracting features per segment...
+
+  Loading models...
+  Models loaded successfully!
+        Feature matrix shape: (19, 53)
+  [5/5] Predicting segment classes with SVM...
+
+============================================================
+  PREDICTION RESULTS
+============================================================
+
+  Audio file:      stutter audio 3.mp3
+  Duration:        47.84s
+  Speech duration: 29.09s
+  Total Segments:  19
+
+  --------------------------------------------------
+  ! OVERALL VERDICT: Stuttering Detected - Prolongation
+  --------------------------------------------------
+
+  Segment Breakdown:
+    Prolongation            16 segs (84.2%)  ###########################------ <
+    Sound Repetition         2 segs (10.5%)  ###------------------------------
+    Word Repetition          1 segs ( 5.3%)  #--------------------------------
+
+  Average Class Probabilities (across segments):
+    Prolongation            74.0%  ########################---------
+    Sound Repetition        12.5%  ####-----------------------------
+    Word Repetition          9.5%  ###------------------------------
+    Interjection             2.4%  ---------------------------------
+    Fluent Speech            1.2%  ---------------------------------
+    Block                    0.4%  ---------------------------------
+  --------------------------------------------------
+
+  Completed in 30.2s
+
+
+============================================================
+PROCESSING: stutter audio.mp3
+============================================================
+
+============================================================
+  Stuttering Detection ù Single File Prediction
+============================================================
+
+  Audio file:  stutter audio.mp3
+  Full path:   D:\semi supervised\real input\stutter audio.mp3
+
+  [1/4] Loading audio...
+        Duration: 17.46s | Sample rate: 16000 Hz
+  [2/4] Removing silence...
+        Speech duration after VAD: 11.48s
+  [3/5] Segmenting audio...
+        Generated 7 overlapping segments (3s each)
+  [4/5] Extracting features per segment...
+
+  Loading models...
+  Models loaded successfully!
+        Feature matrix shape: (7, 53)
+  [5/5] Predicting segment classes with SVM...
+
+============================================================
+  PREDICTION RESULTS
+============================================================
+
+  Audio file:      stutter audio.mp3
+  Duration:        17.46s
+  Speech duration: 11.48s
+  Total Segments:  7
+
+  --------------------------------------------------
+  ! OVERALL VERDICT: Stuttering Detected - Sound Repetition
+  --------------------------------------------------
+
+  Segment Breakdown:
+    Sound Repetition         4 segs (57.1%)  ##################--------------- <
+    Word Repetition          2 segs (28.6%)  #########------------------------
+    Fluent Speech            1 segs (14.3%)  ####-----------------------------
+
+  Average Class Probabilities (across segments):
+    Sound Repetition        51.0%  ################-----------------
+    Word Repetition         39.2%  ############---------------------
+    Fluent Speech            3.8%  #--------------------------------
+    Prolongation             2.7%  ---------------------------------
+    Interjection             1.8%  ---------------------------------
+    Block                    1.5%  ---------------------------------
+  --------------------------------------------------
+
+  Completed in 12.6s
+

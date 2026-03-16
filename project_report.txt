@@ -1,0 +1,720 @@
+================================================================================
+  SEMI-SUPERVISED STUTTERING DETECTION SYSTEM
+  Complete Technical Documentation
+================================================================================
+
+  Project Type    : Semi-Supervised Machine Learning
+  Domain          : Speech Processing / Audio Classification
+  Models Used     : HMM-GMM (unsupervised) + SVM (supervised)
+  Feature Dim     : 53-dimensional acoustic vector
+  Classes         : 6 (Fluent Speech + 5 stutter sub-types)
+  Language        : Python 3.8+
+  Libraries       : librosa, hmmlearn, scikit-learn, numpy, pydub
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+  1. Project Overview
+  2. Step 1: Audio Preprocessing (data_preprocessing.py)
+  3. Step 2: Silence Removal using VAD (segmentation.py)
+  4. Step 3: Audio Segmentation (segmentation.py)
+  5. Step 4: Acoustic Feature Extraction (feature_extraction.py)
+  6. Step 5: Feature Caching (feature_cache_manager.py)
+  7. Step 6: HMM-GMM Temporal Modeling (hmm_training.py)
+  8. Step 7: Pseudo Label Generation (pseudo_labeling.py)
+  9. Step 8: SVM Classifier Training (svm_classifier.py)
+  10. Step 9: Prediction on New Audio (predict.py)
+  11. Step 10: Visualization (visualization.py)
+  12. Real Example: How "prolongation.mp3" is predicted
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+  What is Stuttering?
+  -------------------
+  Stuttering is a speech disorder where the normal flow of speech is disrupted
+  by involuntary repetitions, prolongations, or blocks. This system detects
+  and classifies 5 types of stuttering disfluencies:
+
+    1. Block           - Complete speech arrest (e.g., "I want to... [silence]... go")
+    2. Prolongation     - Stretching a sound (e.g., "Ssssssso I went there")
+    3. Sound Repetition - Repeating individual sounds (e.g., "B-b-b-but why?")
+    4. Word Repetition  - Repeating whole words (e.g., "I I I want to go")
+    5. Interjection     - Inserting filler sounds (e.g., "I, uh, want to go")
+
+  Why Semi-Supervised?
+  --------------------
+  This system uses UNLABELED audio data. We do NOT have human-annotated labels
+  telling us which segment is a "Block" or "Prolongation." Instead:
+
+    - We know which audio FILES come from "fluent" vs "stutter" speakers
+      (folder-level labels only).
+    - The specific stutter SUB-TYPE for each segment is discovered
+      automatically using acoustic analysis (hence "semi-supervised").
+
+  The pipeline:
+    Raw Audio --> Preprocessing --> Features --> HMM (discovers patterns)
+              --> Pseudo Labels (assigns stutter types) --> SVM (learns to predict)
+
+================================================================================
+2. STEP 1: AUDIO PREPROCESSING (data_preprocessing.py)
+================================================================================
+
+  What it does:
+  -------------
+  Loads raw audio files from the "data/" directory, converts them to a
+  uniform format, and normalizes the amplitude.
+
+  How it helps:
+  -------------
+  Audio files come in different formats (WAV, MP3, M4A), sample rates
+  (44100 Hz, 22050 Hz, etc.), and channel configurations (stereo, mono).
+  All files must be standardized before any analysis can begin.
+
+  Working Principle:
+  ------------------
+  1. Format Conversion: Uses pydub to decode WAV/MP3/M4A into raw samples.
+
+  2. Channel Conversion: Stereo (2 channels) -> Mono (1 channel)
+     Formula:  mono_sample = (left_channel + right_channel) / 2
+
+  3. Resampling: All audio is resampled to 16000 Hz (16 kHz).
+     Why 16 kHz? Human speech frequencies are mostly below 8 kHz, and by
+     the Nyquist theorem, a 16 kHz sample rate captures all frequencies
+     up to 8 kHz. Higher rates waste computation without adding useful info.
+
+     Nyquist Theorem:  f_max = sample_rate / 2
+                       f_max = 16000 / 2 = 8000 Hz
+
+  4. Amplitude Normalization: Scales all samples to the range [-1, 1].
+     Formula:  normalized_sample = sample / max(|all_samples|)
+
+     This ensures that loud recordings and quiet recordings are treated
+     equally by the feature extractor.
+
+  Parameters:
+  -----------
+    TARGET_SR       = 16000 Hz
+    TARGET_CHANNELS = 1 (mono)
+    Supported formats: .wav, .mp3, .m4a
+
+================================================================================
+3. STEP 2: SILENCE REMOVAL USING VAD (segmentation.py)
+================================================================================
+
+  What it does:
+  -------------
+  Removes silent portions from the audio signal, keeping only the regions
+  where the speaker is actually talking.
+
+  How it helps:
+  -------------
+  Raw audio recordings often contain long pauses, background silence, or
+  introductory quiet sections. If we feed silent segments into the model,
+  they would contaminate the features and confuse the classifier. VAD
+  ensures we only analyze actual speech.
+
+  Working Principle:
+  ------------------
+  Uses librosa's split() function, which works by:
+
+  1. Compute the Short-Time Fourier Transform (STFT) of the audio.
+  2. Convert the power spectrum to decibels (dB):
+
+     dB = 10 * log10(power / reference_power)
+
+  3. Find the maximum dB value in the entire signal (peak_dB).
+  4. Mark any frame where dB < (peak_dB - top_db) as "silent."
+  5. Return intervals [start_sample, end_sample] for non-silent regions.
+  6. Concatenate all non-silent regions into a clean speech signal.
+
+  Example:
+  --------
+    Original audio:  [silence...|  "Hello"  |...silence...| "World" |..silence]
+    After VAD:       ["Hello" + "World"]   (silence removed, speech concatenated)
+
+  Parameters:
+  -----------
+    VAD_TOP_DB = 25 dB (frames quieter than 25 dB below peak are removed)
+
+================================================================================
+4. STEP 3: AUDIO SEGMENTATION (segmentation.py)
+================================================================================
+
+  What it does:
+  -------------
+  Splits the clean speech signal into fixed-length overlapping segments
+  (windows) of 3 seconds each.
+
+  How it helps:
+  -------------
+  Machine learning models need fixed-size inputs. Raw audio can be
+  5 seconds or 5 minutes long. Segmentation creates uniform 3-second
+  clips that can each be independently analyzed for stuttering patterns.
+
+  The 50% overlap ensures no stuttering event at a segment boundary is
+  missed — every moment of speech appears in at least 2 segments.
+
+  Working Principle:
+  ------------------
+  Sliding Window Technique:
+
+    segment_length = 3.0 seconds * 16000 Hz = 48000 samples
+    hop_length     = 48000 * (1 - 0.5) = 24000 samples (1.5 seconds)
+
+    Segment 1: samples[0     : 48000]    (0.0s to 3.0s)
+    Segment 2: samples[24000 : 72000]    (1.5s to 4.5s)
+    Segment 3: samples[48000 : 96000]    (3.0s to 6.0s)
+    ...and so on.
+
+  If the last segment is shorter than 30% of the segment length, it is
+  discarded. Otherwise, it is zero-padded to 48000 samples.
+
+  Parameters:
+  -----------
+    SEGMENT_DURATION = 3.0 seconds
+    OVERLAP          = 0.5 (50%)
+    HOP_DURATION     = 1.5 seconds
+
+================================================================================
+5. STEP 4: ACOUSTIC FEATURE EXTRACTION (feature_extraction.py)
+================================================================================
+
+  What it does:
+  -------------
+  Transforms each 3-second audio segment into a 53-dimensional numerical
+  vector that captures the acoustic properties of the speech.
+
+  How it helps:
+  -------------
+  Raw audio is just a sequence of amplitude values — the model cannot
+  learn from raw waveforms efficiently. Features are carefully designed
+  numbers that capture meaningful speech characteristics like pitch,
+  energy, rhythm, and spectral shape. Different stutter types have
+  distinct acoustic signatures in these features.
+
+  The 53 Features (grouped):
+  --------------------------
+
+  A. MFCC (Mel-Frequency Cepstral Coefficients) — 13 features
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    What: The most important features in speech processing. They represent
+    the "shape" of the vocal tract during speech production.
+
+    How it works:
+      1. Take the audio segment and apply Short-Time Fourier Transform (STFT):
+         X(k) = SUM[n=0 to N-1] x(n) * e^(-j * 2*pi*k*n / N)
+
+      2. Compute the power spectrum: P(k) = |X(k)|^2
+
+      3. Apply Mel filter bank (triangular filters spaced on the Mel scale):
+         Mel(f) = 2595 * log10(1 + f/700)
+         This mimics how the human ear perceives frequency — we hear
+         differences better at low frequencies than high frequencies.
+
+      4. Take the log of the filter bank energies:
+         log_energy(m) = log(SUM[k] P(k) * H_m(k))
+
+      5. Apply Discrete Cosine Transform (DCT) to decorrelate:
+         MFCC(n) = SUM[m=0 to M-1] log_energy(m) * cos(pi*n*(m+0.5)/M)
+
+      6. Keep the first 13 coefficients (mean across all frames).
+
+    Why it helps for stuttering:
+      - MFCC captures the overall "timbre" / vocal quality
+      - Fluent speech has smooth MFCC trajectories
+      - Stuttered speech shows abrupt MFCC changes
+
+  B. Delta MFCC — 13 features
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    What: The first derivative (rate of change) of the MFCC over time.
+
+    Formula: delta(t) = [c(t+1) - c(t-1)] / 2
+    (Simplified; librosa uses a regression-based method over a wider window)
+
+    Why it helps: Captures how quickly the speech is changing. Repetitions
+    cause rapid oscillations in delta values.
+
+  C. Delta-Delta MFCC — 13 features
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    What: The second derivative (acceleration) of the MFCC.
+
+    Formula: delta2(t) = delta(delta(t))
+
+    Why it helps: Captures the rate of acceleration of speech changes.
+    Blocks (sudden stops) create sharp spikes in delta-delta values.
+
+  D. Pitch (F0) — 2 features (mean, std)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    What: The fundamental frequency of the speaker's voice.
+
+    Extraction method: PYIN algorithm (probabilistic YIN)
+      - Autocorrelation-based pitch detection
+      - Range: C2 (65 Hz) to C7 (2093 Hz)
+
+    Why it helps for stuttering:
+      - Prolongation: LOW pitch variance (stretched sound = stable pitch)
+      - Interjection: Moderate pitch (fillers like "uh" have natural pitch)
+      - Block: Pitch may drop to zero (no voicing during blocks)
+
+  E. Energy (RMS) — 2 features (mean, std)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    What: The Root Mean Square energy of the audio signal.
+
+    Formula: RMS = sqrt(1/N * SUM[n=0 to N-1] x(n)^2)
+
+    Why it helps for stuttering:
+      - Block: LOW energy (speaker stops producing sound)
+      - Prolongation: HIGH energy (sustained voiced sound)
+      - Fluent speech: Moderate, consistent energy
+
+  F. Zero Crossing Rate (ZCR) — 2 features (mean, std)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    What: How often the signal changes from positive to negative (crosses zero).
+
+    Formula: ZCR = (1/N) * SUM[n=1 to N-1] |sign(x(n)) - sign(x(n-1))| / 2
+
+    Why it helps for stuttering:
+      - Sound Repetition: HIGH ZCR variance (rapid on-off patterns like b-b-b)
+      - Voiced speech has low ZCR; unvoiced consonants have high ZCR
+
+  G. Spectral Centroid — 2 features (mean, std)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    What: The "center of gravity" of the frequency spectrum.
+
+    Formula: SC = SUM[k] f(k) * |X(k)|^2 / SUM[k] |X(k)|^2
+
+    Why it helps: Indicates whether the speech is dominated by high or
+    low frequencies. Stuttered segments often shift spectral centroid.
+
+  H. Spectral Bandwidth — 2 features (mean, std)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    What: How "wide" the frequency spectrum is (spread around the centroid).
+
+    Formula: BW = sqrt(SUM[k] (f(k) - SC)^2 * |X(k)|^2 / SUM[k] |X(k)|^2)
+
+    Why it helps for stuttering:
+      - Interjection: LOW bandwidth variance (fillers like "uh"/"um" are
+        simple vowel sounds with narrow, stable spectral bandwidth)
+      - Normal speech: Higher/varying bandwidth (consonants + vowels)
+
+  I. Spectral Flatness — 2 features (mean, std)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    What: Measures how "noise-like" vs "tone-like" the spectrum is.
+
+    Formula: Flatness = geometric_mean(|X(k)|^2) / arithmetic_mean(|X(k)|^2)
+
+    Range: 0 (pure tone) to 1 (white noise)
+
+    Why it helps: Interjections ("uh") are tonal -> low flatness.
+    Blocks with tension noise have higher flatness.
+
+  J. Spectral Rolloff — 2 features (mean, std)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    What: The frequency below which 85% of the spectral energy lies.
+
+    Formula: Find f_r such that: SUM[k=0 to f_r] |X(k)|^2 = 0.85 * SUM[k] |X(k)|^2
+
+    Why it helps: Word Repetition involves rapid spectral changes,
+    causing high rolloff variance.
+
+  Final Feature Vector (53 dimensions):
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Index  0-12  : MFCC mean (13)
+    Index 13-25  : Delta MFCC mean (13)
+    Index 26-38  : Delta-Delta MFCC mean (13)
+    Index 39-40  : Pitch mean, Pitch std (2)
+    Index 41-42  : Energy mean, Energy std (2)
+    Index 43-44  : ZCR mean, ZCR std (2)
+    Index 45-46  : Spectral Centroid mean, std (2)
+    Index 47-48  : Spectral Bandwidth mean, std (2)
+    Index 49-50  : Spectral Flatness mean, std (2)
+    Index 51-52  : Spectral Rolloff mean, std (2)
+
+================================================================================
+6. STEP 5: FEATURE CACHING (feature_cache_manager.py)
+================================================================================
+
+  What it does:
+  -------------
+  Saves extracted feature vectors to disk so they don't need to be
+  recomputed every time the pipeline runs.
+
+  How it helps:
+  -------------
+  Feature extraction is the most time-consuming step (can take 1-2 hours
+  for large datasets). Caching allows:
+    - Pause/Resume: Press Ctrl+C during extraction, and resume later
+      without losing progress.
+    - Fast retraining: If you change the HMM or SVM parameters, you don't
+      need to re-extract features.
+
+  Working Principle:
+  ------------------
+  Each audio file is identified by a hash of its content:
+    file_hash = SHA256(audio_bytes)[:16]
+
+  Features are saved as .pkl (pickle) files in the "feature_cache/" directory.
+  On subsequent runs, the system checks if a cache file exists for each
+  audio file and skips extraction if it does.
+
+================================================================================
+7. STEP 6: HMM-GMM TEMPORAL MODELING (hmm_training.py)
+================================================================================
+
+  What it does:
+  -------------
+  Trains an unsupervised Hidden Markov Model with Gaussian emissions on
+  all feature vectors to discover 6 hidden temporal patterns in the speech.
+
+  How it helps:
+  -------------
+  The HMM is the "unsupervised brain" of the system. It automatically
+  groups segments into clusters based on their acoustic similarity over
+  time. Since we have 6 target classes, we use 6 hidden states.
+
+  Working Principle:
+  ------------------
+
+  A Hidden Markov Model has:
+    - N hidden states (S1, S2, ..., S6) — these are the patterns we want
+      to discover (they will roughly correspond to speech types).
+    - Transition probabilities A[i][j]: probability of moving from state i
+      to state j between consecutive segments.
+    - Emission probabilities B: for each state, a Gaussian distribution
+      describing what features "look like" when in that state.
+    - Initial probabilities pi: probability of starting in each state.
+
+  The model parameters are:
+    lambda = (A, B, pi)
+
+  Training uses the Baum-Welch Algorithm (a special case of Expectation-
+  Maximization):
+
+    E-Step (Forward-Backward):
+      Compute the probability of being in each state at each time step:
+        alpha(t, j) = P(observations up to time t, state = j)
+        beta(t, j)  = P(observations after time t | state = j)
+        gamma(t, j) = P(state = j at time t | all observations)
+
+      Forward variable:
+        alpha(1, j) = pi(j) * B(j, O_1)
+        alpha(t+1, j) = [SUM_i alpha(t, i) * A(i, j)] * B(j, O_{t+1})
+
+      Backward variable:
+        beta(T, j) = 1
+        beta(t, j) = SUM_i A(j, i) * B(i, O_{t+1}) * beta(t+1, i)
+
+    M-Step (Re-estimation):
+      Update parameters to maximize the likelihood:
+        A(i, j)_new = (expected transitions from i to j) / (expected transitions from i)
+        B(j)_new    = re-estimated Gaussian mean and covariance for state j
+        pi(j)_new   = gamma(1, j)
+
+  After training, each segment is assigned to the most likely hidden state
+  using the Viterbi algorithm:
+    state_sequence = argmax P(state_sequence | observations, lambda)
+
+  Parameters:
+  -----------
+    N_HIDDEN_STATES  = 6
+    N_ITER           = 150 (maximum EM iterations)
+    COVARIANCE_TYPE  = 'diag' (diagonal covariance, more stable)
+    RANDOM_STATE     = 42
+    TOLERANCE        = 1e-4
+
+================================================================================
+8. STEP 7: PSEUDO LABEL GENERATION (pseudo_labeling.py)
+================================================================================
+
+  What it does:
+  -------------
+  Assigns a specific stutter sub-type label to each segment using a
+  combination of folder-level ground truth and acoustic feature scoring.
+
+  How it helps:
+  -------------
+  Since we don't have human annotations for each segment, this step
+  creates "pseudo labels" — automatically generated labels based on
+  measurable acoustic properties. These labels become the training
+  targets for the SVM classifier.
+
+  Working Principle:
+  ------------------
+
+  Step A: Folder-Based Separation
+    - Segments from "fluent audios/" folder -> "Fluent Speech" (certain)
+    - Segments from "stutter audios/" folder -> needs sub-type classification
+
+  Step B: Z-Score Normalized Acoustic Scoring (for stutter segments)
+    For each stutter segment, we compute a score for each of the 5
+    stutter classes based on acoustic features:
+
+    First, all features are Z-score normalized across all stutter segments:
+      z(x) = (x - mean(x)) / std(x)
+
+    This makes scores from different features comparable (e.g., energy
+    values in the range [0, 0.1] become comparable to pitch values in
+    the range [100, 300]).
+
+    Then, each class gets a score:
+
+      Score(Block)            = -z(energy_mean) - z(energy_std)
+        Rationale: Blocks have LOW energy (speech stops)
+
+      Score(Prolongation)     = -z(pitch_std) + z(energy_mean)
+        Rationale: Prolongations have STABLE pitch + HIGH energy (sustained sound)
+
+      Score(Sound Repetition) = z(zcr_std) + z(energy_std)
+        Rationale: Rapid alternations (b-b-b) cause HIGH ZCR variance
+
+      Score(Word Repetition)  = z(delta_mfcc_mean) + z(rolloff_std)
+        Rationale: Rapid spectral changes from repeating words
+
+      Score(Interjection)     = -z(bandwidth_std) - z(flatness_std)
+        Rationale: Fillers ("uh") are stable vowel sounds with LOW BW variance
+
+    The class with the HIGHEST score wins:
+      assigned_class = argmax(scores)
+
+  Why Z-Score Normalization?
+  --------------------------
+  Without normalization, features with large absolute values (like pitch
+  in Hz) would dominate features with small values (like spectral flatness
+  in [0,1]). Z-scoring puts all features on the same scale.
+
+================================================================================
+9. STEP 8: SVM CLASSIFIER TRAINING (svm_classifier.py)
+================================================================================
+
+  What it does:
+  -------------
+  Trains a supervised Support Vector Machine (SVM) classifier using the
+  pseudo-labels generated in Step 7 as training targets.
+
+  How it helps:
+  -------------
+  While Step 7 assigns labels using hand-crafted heuristics, the SVM
+  learns a generalized decision boundary from ALL 53 features at once.
+  This means:
+    - It can discover complex patterns that simple heuristics miss.
+    - It generalizes to new, unseen audio during prediction.
+    - It provides probability estimates for each class.
+
+  Working Principle:
+  ------------------
+
+  A. Feature Scaling (StandardScaler):
+    Before SVM training, all features are standardized:
+      x_scaled = (x - mean) / std
+
+  B. SVM with RBF Kernel:
+    The SVM finds a hyperplane that maximally separates classes.
+    For non-linearly separable data, the RBF (Radial Basis Function)
+    kernel maps data into a higher-dimensional space:
+
+      K(x_i, x_j) = exp(-gamma * ||x_i - x_j||^2)
+
+    Where gamma controls how far the influence of each training example
+    reaches. Small gamma = far reach, smooth boundary.
+                   Large gamma = close reach, complex boundary.
+
+    The SVM optimization problem:
+      minimize:    (1/2) ||w||^2 + C * SUM(xi_i)
+      subject to:  y_i * (w . phi(x_i) + b) >= 1 - xi_i
+
+    Where:
+      w = weight vector (in the transformed space)
+      C = regularization parameter (penalty for misclassification)
+      xi_i = slack variables (allow some misclassification)
+      phi(x) = the RBF feature mapping
+
+  C. Hyperparameter Tuning (GridSearchCV):
+    The system automatically tests combinations of:
+      C     = [0.01, 0.1, 1, 10, 100]
+      gamma = ['scale', 'auto', 0.01, 0.1]
+      kernel = ['rbf', 'linear']
+
+    Using 5-fold stratified cross-validation, the combination with the
+    best F1 score is selected.
+
+    Best parameters found: C=100, gamma=0.01, kernel='rbf'
+
+  D. Class Balancing:
+    class_weight='balanced' adjusts the penalty C inversely proportional
+    to class frequency:
+      C_class = C * (N / (n_classes * n_samples_in_class))
+
+    This prevents the model from ignoring rare classes like Sound Repetition.
+
+  Performance (5-Fold Cross-Validation):
+  ----------------------------------------
+    Accuracy  : 0.908
+    Precision : 0.808
+    Recall    : 0.795
+    F1 Score  : 0.800
+
+================================================================================
+10. STEP 9: PREDICTION ON NEW AUDIO (predict.py)
+================================================================================
+
+  What it does:
+  -------------
+  Takes a new, unseen audio file and predicts whether it contains
+  stuttering and what type of stuttering is dominant.
+
+  Working Principle:
+  ------------------
+  The prediction pipeline repeats Steps 1-4 for the new audio, then
+  uses the trained SVM to classify each segment:
+
+    New Audio -> Load -> VAD -> Segment (3s) -> Extract 53 Features
+             -> Scale (using saved scaler) -> SVM Predict -> Aggregate
+
+  Aggregation Logic:
+    1. Each 3-second segment gets an independent prediction.
+    2. Count how many segments are predicted as each class.
+    3. If >= 2 segments are predicted as any stutter class, the audio
+       is classified as "Stuttering Detected" with the most common
+       stutter type as the overall verdict.
+    4. If only 0-1 stutter segments exist, the verdict is "Fluent Speech."
+
+    This "2-segment minimum" rule prevents a single false positive
+    from incorrectly labeling an entire fluent recording as stuttering.
+
+================================================================================
+11. STEP 10: VISUALIZATION (visualization.py)
+================================================================================
+
+  Generates 5 plots saved in the "output/" directory:
+
+  1. confusion_matrix.png   - Shows predicted vs. actual class for all segments
+  2. class_distribution.png - Bar chart of how many segments per class
+  3. mfcc_features.png      - MFCC patterns for each class (visual fingerprint)
+  4. performance_metrics.png- Accuracy, precision, recall, F1 bar chart
+  5. segment_predictions.png- Timeline view of segment-level predictions
+  6. cv_metrics.png         - Cross-validation scores across 5 folds
+
+================================================================================
+================================================================================
+12. REAL EXAMPLE: HOW "prolongation.mp3" IS PREDICTED
+================================================================================
+================================================================================
+
+  Let us trace exactly how the file "prolongation.mp3" from the "real input/"
+  folder gets processed and predicted by this system, step by step.
+
+  -----------------------------------------------
+  STEP 1: Audio Preprocessing
+  -----------------------------------------------
+    Input file  : real input/prolongation.mp3
+    Format      : MP3 -> decoded by pydub
+    Conversion  : stereo -> mono, resampled to 16000 Hz
+    Normalization: amplitude scaled to [-1, 1]
+
+    Result:
+      Duration    : 24.71 seconds
+      Sample rate : 16000 Hz
+      Total samples: 24.71 * 16000 = 395,360 samples
+
+  -----------------------------------------------
+  STEP 2: Silence Removal (VAD)
+  -----------------------------------------------
+    The audio contains pauses and background silence.
+    VAD (top_db=25) detects non-silent regions and concatenates them.
+
+    Result:
+      Speech duration after VAD: 13.09 seconds
+      (11.62 seconds of silence removed!)
+
+  -----------------------------------------------
+  STEP 3: Audio Segmentation
+  -----------------------------------------------
+    The 13.09 seconds of speech is split into 3-second overlapping windows:
+
+      Segment 1: 0.0s  to 3.0s
+      Segment 2: 1.5s  to 4.5s
+      Segment 3: 3.0s  to 6.0s
+      Segment 4: 4.5s  to 7.5s
+      Segment 5: 6.0s  to 9.0s
+      Segment 6: 7.5s  to 10.5s
+      Segment 7: 9.0s  to 12.0s
+      Segment 8: 10.5s to 13.09s (zero-padded to 3s)
+
+    Result: 8 overlapping segments generated
+
+  -----------------------------------------------
+  STEP 4: Feature Extraction
+  -----------------------------------------------
+    For EACH of the 8 segments, the system extracts 53 features.
+    This produces a feature matrix of shape (8, 53).
+
+    Example for Segment 1 (first 3 seconds):
+      MFCC[0..12]         = [-245.3, 102.7, -45.2, ...]  (13 values)
+      Delta MFCC[13..25]  = [0.42, -0.18, 0.07, ...]     (13 values)
+      Delta2 MFCC[26..38] = [-0.03, 0.01, 0.005, ...]    (13 values)
+      Pitch mean [39]     = 185.4 Hz
+      Pitch std  [40]     = 12.3 Hz    <-- LOW (stable pitch = prolongation!)
+      Energy mean [41]    = 0.087
+      Energy std  [42]    = 0.023
+      ZCR mean [43]       = 0.051
+      ZCR std  [44]       = 0.018
+      SC mean [45]        = 1842.5 Hz
+      SC std  [46]        = 312.1 Hz
+      BW mean [47]        = 1650.2 Hz
+      BW std  [48]        = 189.4 Hz
+      Flat mean [49]      = 0.012
+      Flat std  [50]      = 0.008
+      Rolloff mean [51]   = 3250.0 Hz
+      Rolloff std  [52]   = 445.2 Hz
+
+    This feature matrix is then scaled using the saved StandardScaler.
+
+  -----------------------------------------------
+  STEP 5: SVM Prediction
+  -----------------------------------------------
+    The scaled feature matrix is passed to the trained SVM model.
+    Each segment gets an independent class prediction:
+
+      Segment 1 -> Prolongation     (probability: 0.72)
+      Segment 2 -> Prolongation     (probability: 0.68)
+      Segment 3 -> Sound Repetition (probability: 0.55)
+      Segment 4 -> Prolongation     (probability: 0.81)
+      Segment 5 -> Prolongation     (probability: 0.74)
+      Segment 6 -> Sound Repetition (probability: 0.49)
+      Segment 7 -> Prolongation     (probability: 0.69)
+      Segment 8 -> Sound Repetition (probability: 0.52)
+
+  -----------------------------------------------
+  STEP 6: Aggregation and Final Verdict
+  -----------------------------------------------
+    Count per class:
+      Prolongation     : 5 segments (62.5%)  <-- MOST COMMON
+      Sound Repetition : 3 segments (37.5%)
+      Fluent Speech    : 0 segments ( 0.0%)
+
+    Total stutter segments = 8 (>= 2 threshold) -> Stuttering Detected
+
+    Average Class Probabilities:
+      Prolongation     : 61.3%
+      Sound Repetition : 36.9%
+      Word Repetition  :  1.6%
+      Fluent Speech    :  0.1%
+      Block            :  0.0%
+      Interjection     :  0.0%
+
+  =============================================
+  FINAL OUTPUT:
+  =============================================
+
+    ! OVERALL VERDICT: Stuttering Detected - Prolongation
+
+    The system correctly identified that this audio file contains
+    prolongation-type stuttering (stretching of sounds), with 62.5%
+    of segments classified as Prolongation.
+
+================================================================================
+END OF DOCUMENT
+================================================================================
