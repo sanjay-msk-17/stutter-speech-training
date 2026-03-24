@@ -1,0 +1,24 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local DB (use PostgreSQL on Render)
+*.db
+*.sqlite3
+
+# Environment secrets
+.env
+
+# Temp audio files
+*.webm
+*.wav
+*.mp3
+
+# Feature cache from ML pipeline
+feature_cache/
