@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/authStore';
 import { sentencesAPI } from '@/lib/api';
@@ -7,6 +7,15 @@ import AppLayout from '@/components/AppLayout';
 import toast from 'react-hot-toast';
 
 const EXERCISE_DURATION = 30; // seconds per sentence
+
+// Built-in fallback — page loads instantly even when API is unavailable
+const FALLBACK_SENTENCES = [
+  { sentence: 'Take a slow, steady breath before each sentence you speak.', category: 'Controlled Speech', icon: '🎯' },
+  { sentence: 'Ease into each word — especially the vowels — like a gentle wave.', category: 'Vowel Stretching', icon: '🗣️' },
+  { sentence: 'Breathe in for four counts, hold for two, out for six.', category: 'Smooth Breathing', icon: '🌬️' },
+  { sentence: 'Speak softly, smoothly, and with steady rhythm throughout.', category: 'Controlled Speech', icon: '🎯' },
+  { sentence: 'Every evening, Amy eats oranges outside under umbrella trees.', category: 'Vowel Stretching', icon: '🗣️' },
+];
 
 const BREATHING_STEPS = [
   { label: 'Breathe In', duration: 4, color: '#6366f1', scale: 1.25 },
@@ -22,18 +31,24 @@ const TIPS = [
   '💡 Stretch vowels slightly: "Soooo… I went to the store."',
 ];
 
+interface SentenceItem {
+  sentence: string;
+  category: string;
+  icon: string;
+}
+
 export default function ExercisesPage() {
   const router = useRouter();
   const { token } = useAuthStore();
 
-  const [sentences, setSentences] = useState<string[]>([]);
+  // Start with built-in sentences immediately — no loading spinner needed
+  const [sentences, setSentences] = useState<SentenceItem[]>(FALLBACK_SENTENCES);
   const [current, setCurrent] = useState(0);
-  const [done, setDone] = useState<boolean[]>([]);
+  const [done, setDone] = useState<boolean[]>(new Array(FALLBACK_SENTENCES.length).fill(false));
   const [elapsed, setElapsed] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
   const [breathStep, setBreathStep] = useState(0);
   const [breathElapsed, setBreathElapsed] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'sentences' | 'breathing'>('sentences');
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -41,23 +56,23 @@ export default function ExercisesPage() {
 
   useEffect(() => {
     if (!token) { router.replace('/login'); return; }
+
+    // Try to fetch personalised sentences with a 6s timeout.
+    // If the API is slow / down we just keep the fallback sentences silently.
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const controller = new AbortController();
+
     sentencesAPI.getSentences(5)
       .then((r) => {
-        setSentences(r.data.sentences || []);
-        setDone(new Array(r.data.sentences?.length || 5).fill(false));
+        const fetched: SentenceItem[] = r.data.sentences || [];
+        if (fetched.length > 0) {
+          setSentences(fetched);
+          setDone(new Array(fetched.length).fill(false));
+          setCurrent(0);
+        }
       })
-      .catch(() => {
-        const fallback = [
-          'She sells seashells by the seashore.',
-          'How much wood would a woodchuck chuck?',
-          'Peter Piper picked a peck of pickled peppers.',
-          'The big black bear sat on the big black rug.',
-          'Can you can a can as a canner can can?',
-        ];
-        setSentences(fallback);
-        setDone(new Array(fallback.length).fill(false));
-      })
-      .finally(() => setLoading(false));
+      .catch(() => { /* silently keep fallback */ })
+      .finally(() => clearTimeout(timer));
   }, [token, router]);
 
   // Timer
@@ -125,14 +140,6 @@ export default function ExercisesPage() {
   const timerProgress = (elapsed / EXERCISE_DURATION) * 100;
   const currentStep = BREATHING_STEPS[breathStep];
   const breathProgress = (breathElapsed / currentStep.duration) * 100;
-
-  if (loading) return (
-    <AppLayout>
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin" />
-      </div>
-    </AppLayout>
-  );
 
   return (
     <AppLayout>
@@ -203,9 +210,15 @@ export default function ExercisesPage() {
                 >
                   <div className="flex items-start gap-3">
                     <span className="text-lg flex-shrink-0 mt-0.5">{done[i] ? '✅' : i === current ? '▶️' : '○'}</span>
-                    <span className={`text-sm ${i === current ? 'text-white font-medium' : done[i] ? 'text-gray-500 line-through' : 'text-gray-300'}`}>
-                      {s}
-                    </span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs">{s.icon}</span>
+                        <span className="text-xs font-medium" style={{ color: '#a78bfa' }}>{s.category}</span>
+                      </div>
+                      <span className={`text-sm ${i === current ? 'text-white font-medium' : done[i] ? 'text-gray-500 line-through' : 'text-gray-300'}`}>
+                        {s.sentence}
+                      </span>
+                    </div>
                   </div>
                 </button>
               ))}
@@ -214,9 +227,14 @@ export default function ExercisesPage() {
             {/* Active sentence practice */}
             {!done[current] && (
               <div className="glass p-6 space-y-5">
-                <h3 className="text-white font-semibold">Current Sentence</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-white font-semibold">Current Sentence</h3>
+                  <span className="text-xs px-2 py-1 rounded-full" style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.3)' }}>
+                    {sentences[current]?.icon} {sentences[current]?.category}
+                  </span>
+                </div>
                 <p className="text-2xl text-indigo-300 font-medium leading-relaxed">
-                  &ldquo;{sentences[current]}&rdquo;
+                  &ldquo;{sentences[current]?.sentence}&rdquo;
                 </p>
 
                 {/* Timer */}
@@ -261,12 +279,12 @@ export default function ExercisesPage() {
             )}
 
             {done[current] && current < sentences.length - 1 && (
-              <button onClick={() => setCurrent(current + 1)} className="btn-primary w-full">
+              <button onClick={() => { setCurrent(current + 1); resetTimer(); }} className="btn-primary w-full">
                 Next Sentence →
               </button>
             )}
 
-            {completedCount === sentences.length && (
+            {completedCount === sentences.length && sentences.length > 0 && (
               <div className="glass p-8 text-center">
                 <div className="text-5xl mb-4">🎉</div>
                 <h3 className="text-2xl font-bold text-white mb-2">Session Complete!</h3>

@@ -2,13 +2,29 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/authStore';
-import { predictionAPI } from '@/lib/api';
+import { predictionAPI, sentencesAPI } from '@/lib/api';
 import AppLayout from '@/components/AppLayout';
 import toast from 'react-hot-toast';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
 } from 'recharts';
+
+// Built-in sentences — page works even when backend is unavailable
+const LOCAL_SENTENCES = [
+  'Take a slow, steady breath before each sentence you speak.',
+  'Ease into each word — especially the vowels — like a gentle wave.',
+  'Breathe in for four counts, hold for two, out for six.',
+  'Speak softly, smoothly, and with steady rhythm throughout.',
+  'Every evening, Amy eats oranges outside under umbrella trees.',
+  'Let your words flow naturally, without rushing or forcing.',
+  'Begin each sentence with calm confidence and steady pace.',
+  'Breathe out tension, breathe in calm confidence and clarity.',
+];
+
+function randomLocalSentence() {
+  return LOCAL_SENTENCES[Math.floor(Math.random() * LOCAL_SENTENCES.length)];
+}
 
 const CLASS_COLORS: Record<string, string> = {
   'Fluent Speech': '#10b981',
@@ -30,6 +46,7 @@ export default function AnalysisPage() {
   const [result, setResult] = useState<any>(null);
   const [elapsed, setElapsed] = useState(0);
   const [bars, setBars] = useState<number[]>(Array(28).fill(0.3));
+  const [practiceSentence, setPracticeSentence] = useState(randomLocalSentence);
 
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -37,7 +54,14 @@ export default function AnalysisPage() {
   const animRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (!token) router.replace('/login');
+    if (!token) { router.replace('/login'); return; }
+    // Try to fetch a personalised sentence — keep local fallback on failure/timeout
+    sentencesAPI.getSentences(1)
+      .then(r => {
+        const s = r.data.sentences?.[0];
+        if (s?.sentence) setPracticeSentence(s.sentence);
+      })
+      .catch(() => {});
   }, [token, router]);
 
   const stopAll = useCallback(() => {
@@ -121,6 +145,28 @@ export default function AnalysisPage() {
           <h1 className="text-3xl font-bold text-white">Speech Analysis</h1>
           <p className="text-gray-400 mt-1">Record your speech and get an instant stutter analysis</p>
         </div>
+
+        {/* Practice sentence card — shown before & during recording */}
+        {!result && (
+          <div className="glass p-6">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium" style={{ color: '#a78bfa' }}>📝 Read this sentence aloud while recording</p>
+              <button
+                onClick={() => {
+                  setPracticeSentence(randomLocalSentence());
+                  sentencesAPI.getSentences(1)
+                    .then(r => { const s = r.data.sentences?.[0]; if (s?.sentence) setPracticeSentence(s.sentence); })
+                    .catch(() => {});
+                }}
+                className="text-xs text-gray-500 hover:text-indigo-400 transition-colors flex items-center gap-1"
+                title="Get a new sentence"
+              >
+                🔄 New sentence
+              </button>
+            </div>
+            <p className="text-xl text-white font-medium leading-relaxed">&ldquo;{practiceSentence}&rdquo;</p>
+          </div>
+        )}
 
         {/* Recorder card */}
         <div className="glass p-8">
